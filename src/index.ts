@@ -228,6 +228,178 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
+// Help content for each tool
+const helpContent = {
+  overview: `SmallEdit MCP Tool - Help
+========================
+Provides efficient tools for small, targeted file edits.
+
+Available tools:
+- sed_edit: Pattern-based file editing (uses perl backend)
+- perl_edit: Direct perl one-liner execution
+- quick_replace: Simple find/replace without regex
+- line_edit: Edit specific lines by number
+- awk_process: AWK script processing
+- sed_multifile: Apply patterns to multiple files
+- diff_preview: Preview changes before applying
+- help: This help system
+
+General tips:
+- Always use preview/diff_preview to test first
+- Backups are created by default (.bak files)
+- Perl patterns are more portable than sed
+- Use quotes carefully in patterns
+`,
+  sed_edit: `sed_edit - Pattern-based file editing
+===================================
+Uses perl backend for cross-platform compatibility.
+
+Examples:
+  // Simple replacement
+  sed_edit({ file: "config.json", pattern: "s/localhost/production/g" })
+  
+  // Delete lines containing pattern
+  sed_edit({ file: "app.js", pattern: "$_ = '' if /console\\.log/" })
+  
+  // Preview changes first
+  sed_edit({ file: "test.txt", pattern: "s/old/new/g", preview: true })
+  
+  // Edit without backup
+  sed_edit({ file: "temp.txt", pattern: "s/a/b/g", backup: false })
+
+Note: Actually uses perl internally for better compatibility.
+`,
+  perl_edit: `perl_edit - Perl one-liner execution
+===================================
+Direct access to perl's text processing power.
+
+Examples:
+  // Simple substitution
+  perl_edit({ file: "data.txt", script: "s/foo/bar/g" })
+  
+  // Delete lines
+  perl_edit({ file: "log.txt", script: "$_ = '' if /DEBUG/" })
+  
+  // Transform to uppercase
+  perl_edit({ file: "names.txt", script: "$_ = uc" })
+  
+  // Complex multiline operations
+  perl_edit({ 
+    file: "code.js", 
+    script: "s/function\\s+(\\w+)\\s*\\(/const $1 = (/g",
+    multiline: true 
+  })
+
+Tips:
+- Use $_ for the current line
+- Escape backslashes in regex
+- multiline mode slurps entire file
+`,
+  quick_replace: `quick_replace - Simple find and replace
+=====================================
+Literal text replacement without regex.
+
+Examples:
+  // Replace all occurrences
+  quick_replace({ file: "doc.txt", find: "Version 1.0", replace: "Version 2.0" })
+  
+  // Replace only first occurrence  
+  quick_replace({ file: "config.ini", find: "debug=true", replace: "debug=false", all: false })
+  
+  // Replace with special characters
+  quick_replace({ file: "data.csv", find: "$price", replace: "\\$19.99" })
+
+Note: Special regex characters are automatically escaped.
+`,
+  line_edit: `line_edit - Line-specific operations
+==================================
+Edit, delete, or insert at specific line numbers.
+
+Examples:
+  // Replace line 10
+  line_edit({ file: "list.txt", lineNumber: 10, action: "replace", content: "New line 10" })
+  
+  // Delete lines 5-15
+  line_edit({ file: "data.txt", lineRange: "5,15", action: "delete" })
+  
+  // Insert after line 1
+  line_edit({ file: "imports.js", lineNumber: 1, action: "insert_after", content: "import React from 'react';" })
+  
+  // Insert before last line
+  line_edit({ file: "footer.html", lineRange: "$", action: "insert_before", content: "<!-- Updated -->" })
+
+Ranges:
+- Single line: lineNumber: 42
+- Range: lineRange: "10,20" 
+- To end: lineRange: "5,$"
+`,
+  awk_process: `awk_process - AWK script processing
+=================================
+Powerful text processing with AWK.
+
+Examples:
+  // Sum second column
+  awk_process({ file: "numbers.txt", script: "{sum += $2} END {print sum}" })
+  
+  // Process CSV (comma-separated)
+  awk_process({ file: "data.csv", script: "BEGIN{FS=\",\"} {print $1, $3}" })
+  
+  // Filter and calculate
+  awk_process({ 
+    file: "sales.txt", 
+    script: "$3 > 100 {count++; total += $3} END {print \"Count:\", count, \"Avg:\", total/count}"
+  })
+  
+  // Output to file
+  awk_process({ file: "input.txt", script: "{print $2, $1}", outputFile: "reversed.txt" })
+
+Tips:
+- Use FS for field separator
+- $1, $2 etc are fields
+- NR is line number
+- END block runs after processing
+`,
+  sed_multifile: `sed_multifile - Multi-file operations  
+===================================
+Apply patterns to multiple files at once.
+
+Examples:
+  // Update all JS files
+  sed_multifile({ filePattern: "*.js", pattern: "s/var /let /g" })
+  
+  // Process files in subdirectories
+  sed_multifile({ 
+    directory: "./src", 
+    filePattern: "*.ts", 
+    pattern: "s/console\\.log.*//g" 
+  })
+  
+  // Without backups (careful!)
+  sed_multifile({ filePattern: "*.tmp", pattern: "s/old/new/g", backup: false })
+
+Note: Uses perl internally. Be careful with patterns affecting many files!
+`,
+  diff_preview: `diff_preview - Preview changes
+============================
+See what changes would be made before applying.
+
+Examples:
+  // Preview perl substitution
+  diff_preview({ file: "config.json", command: "s/8080/3000/g" })
+  
+  // Preview with sed syntax
+  diff_preview({ file: "data.txt", command: "10,20d", tool: "sed" })
+  
+  // Preview AWK processing  
+  diff_preview({ file: "log.csv", command: "BEGIN{FS=\",\"} {print $2}", tool: "awk" })
+
+Output:
+- Shows unified diff format
+- No changes made to original file
+- Temp files are cleaned up
+`
+};
+
 // Tool implementation handler
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
@@ -247,7 +419,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (preview) {
           // For preview, create a temp copy and diff
           const tempFile = `${file}.preview.tmp`;
-          await execAsync(`cp '${file}' '${tempFile}'`);
+          await execAsync(`rm -f .bak; cp '${file}' '${tempFile}'`);
           
           // Apply change to temp file
           sedCmd = `perl -i -pe '${pattern}' '${tempFile}' && diff -u '${file}' '${tempFile}' | head -50; rm -f '${tempFile}'`;
@@ -436,7 +608,7 @@ ${content}' '${file}'`;
         
         // Create temp file
         const tempFile = `${file}.preview.tmp`;
-        await execAsync(`cp '${file}' '${tempFile}'`);
+        await execAsync(`rm -f .bak; cp '${file}' '${tempFile}'`);
         
         // Apply command to temp file
         let editCmd;
@@ -464,6 +636,20 @@ ${content}' '${file}'`;
           content: [{
             type: 'text',
             text: stdout ? `Preview of changes:\n${stdout}` : 'No changes would be made'
+          }]
+        };
+      }
+      
+      case 'help': {
+        const { tool = 'all' } = args;
+        
+        const helpKey = tool === 'all' ? 'overview' : tool;
+        const content = helpContent[helpKey] || `No help available for tool: ${tool}\n\nAvailable tools: ${Object.keys(helpContent).join(', ')}`;
+        
+        return {
+          content: [{
+            type: 'text',
+            text: content
           }]
         };
       }
