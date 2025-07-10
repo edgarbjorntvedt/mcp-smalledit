@@ -244,11 +244,57 @@ Available tools:
 - diff_preview: Preview changes before applying
 - help: This help system
 
+🎯 WHEN TO USE SMALLEDIT vs FILESYSTEM TOOLS:
+==========================================
+USE SMALLEDIT FOR:
+- Single line changes
+- Simple pattern replacements  
+- Version number updates
+- Removing debug statements
+- Quick find/replace operations
+- Bulk simple edits across files
+
+USE FILESYSTEM TOOLS INSTEAD FOR:
+- Multi-line code blocks
+- Complex JSON/YAML structures
+- Adding new functions or classes
+- Large refactoring operations
+- Any edit that's hard to express as a pattern
+- When you need precise control over formatting
+
+⚠️ COMMON ISSUES TO AVOID:
+- Don't use smalledit for complex multi-line edits
+- Be careful with quotes in shell commands
+- Always preview changes first with diff_preview
+- Clean up .bak files periodically
+- Remember perl syntax differs from sed
+
+💡 BETTER ALTERNATIVES:
+- Instead of sed → Use perl (more portable)
+- For JSON files → Consider jq instead
+- For YAML files → Consider yq instead  
+- For modern sed → Install 'sd' (brew install sd)
+- For better grep → Use ripgrep (rg)
+
 General tips:
 - Always use preview/diff_preview to test first
 - Backups are created by default (.bak files)
 - Perl patterns are more portable than sed
 - Use quotes carefully in patterns
+
+🛑 TROUBLESHOOTING:
+================
+If you see errors like:
+- "undefined label 'ard/Code'" → macOS sed issue, use perl instead
+- "unterminated substitute" → Quote escaping problem
+- "extra characters at end" → Multi-line content issue, use filesystem tools
+- "division by zero" (awk) → Check field separators and data format
+
+📦 SMALLEDIT PHILOSOPHY:
+=====================
+SmallEdit is designed for SMALL edits. If you're trying to do something
+complex and getting errors, you're probably using the wrong tool.
+That's not a bug - it's a feature! Use filesystem:edit_file instead.
 `,
   sed_edit: `sed_edit - Pattern-based file editing
 ===================================
@@ -268,6 +314,12 @@ Examples:
   sed_edit({ file: "temp.txt", pattern: "s/a/b/g", backup: false })
 
 Note: Actually uses perl internally for better compatibility.
+
+WHEN NOT TO USE:
+- Multi-line replacements
+- Complex code modifications  
+- JSON/YAML structure changes
+→ Use filesystem:edit_file instead!
 `,
   perl_edit: `perl_edit - Perl one-liner execution
 ===================================
