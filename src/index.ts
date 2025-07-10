@@ -223,6 +223,44 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ['file', 'command']
         }
+      },
+      {
+        name: 'restore_backup',
+        description: 'Restore a file from its most recent backup (.bak)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            file: {
+              type: 'string',
+              description: 'File to restore from backup'
+            },
+            keepBackup: {
+              type: 'boolean',
+              default: true,
+              description: 'Keep the backup file after restoring'
+            }
+          },
+          required: ['file']
+        }
+      },
+      {
+        name: 'list_backups',
+        description: 'List all backup files in a directory',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            directory: {
+              type: 'string',
+              default: '.',
+              description: 'Directory to search for backup files'
+            },
+            pattern: {
+              type: 'string',
+              default: '*.bak',
+              description: 'Backup file pattern'
+            }
+          }
+        }
       }
     ]
   };
@@ -242,6 +280,8 @@ Available tools:
 - awk_process: AWK script processing
 - sed_multifile: Apply patterns to multiple files
 - diff_preview: Preview changes before applying
+- restore_backup: Restore files from .bak backups
+- list_backups: Find all backup files
 - help: This help system
 
 🎯 WHEN TO USE SMALLEDIT vs FILESYSTEM TOOLS:
@@ -275,6 +315,12 @@ USE FILESYSTEM TOOLS INSTEAD FOR:
 - For YAML files → Consider yq instead  
 - For modern sed → Install 'sd' (brew install sd)
 - For better grep → Use ripgrep (rg)
+
+💡 RECOMMENDED WORKFLOW:
+1. Use diff_preview first to check changes
+2. If it looks good, apply the edit
+3. If something goes wrong, use restore_backup
+4. Use list_backups to find and clean old backups
 
 General tips:
 - Always use preview/diff_preview to test first
@@ -449,6 +495,53 @@ Output:
 - Shows unified diff format
 - No changes made to original file
 - Temp files are cleaned up
+`,
+  restore_backup: `restore_backup - Restore from backup
+=================================
+Restore a file from its .bak backup file.
+
+Examples:
+  // Basic restore
+  restore_backup({ file: "config.json" })
+  // Looks for config.json.bak and restores it
+  
+  // Restore and remove backup
+  restore_backup({ file: "data.txt", keepBackup: false })
+  
+  // After a bad edit
+  sed_edit({ file: "app.js", pattern: "s/function/fungtion/g" }) // Oops!
+  restore_backup({ file: "app.js" }) // Fixed!
+
+Safety features:
+- Creates .before-restore backup of current file
+- Checks for alternative backup formats (.backup, .orig, ~)
+- Clear error if no backup found
+`,
+  list_backups: `list_backups - Find backup files
+==============================
+List all backup files in a directory.
+
+Examples:
+  // List all .bak files in current directory
+  list_backups({})
+  
+  // Search specific directory
+  list_backups({ directory: "./src" })
+  
+  // Find different backup patterns
+  list_backups({ pattern: "*.backup" })
+  list_backups({ pattern: "*~" })  // Emacs-style
+  
+  // Check entire project
+  list_backups({ directory: ".", pattern: "*.bak" })
+
+Output shows:
+- Backup file path
+- File size
+- Modification date
+- Original file name (inferred)
+
+Useful for cleanup or finding old versions.
 `
 };
 
@@ -702,6 +795,93 @@ ${content}' '${file}'`;
           content: [{
             type: 'text',
             text: content
+          }]
+        };
+      }
+      
+      case 'restore_backup': {
+        const { file, keepBackup = true } = args;
+        
+        const backupFile = `${file}.bak`;
+        
+        // Check if backup exists
+        if (!existsSync(backupFile)) {
+          // Look for other common backup patterns
+          const alternatives = [
+            `${file}~`,
+            `${file}.backup`,
+            `${file}.orig`
+          ].filter(existsSync);
+          
+          if (alternatives.length > 0) {
+            throw new Error(`No .bak file found, but found: ${alternatives.join(', ')}`);
+          }
+          throw new Error(`No backup file found for ${file}`);
+        }
+        
+        // Read backup content
+        const backupContent = await readFile(backupFile, 'utf-8');
+        
+        // Check if current file exists and create a safety backup
+        if (existsSync(file)) {
+          await writeFile(`${file}.before-restore`, await readFile(file, 'utf-8'));
+        }
+        
+        // Restore the backup
+        await writeFile(file, backupContent);
+        
+        // Remove backup if requested
+        if (!keepBackup) {
+          await execAsync(`rm -f '${backupFile}'`);
+        }
+        
+        return {
+          content: [{
+            type: 'text',
+            text: `Successfully restored ${file} from backup${!keepBackup ? ' (backup removed)' : ''}\nSafety backup created: ${file}.before-restore`
+          }]
+        };
+      }
+      
+      case 'list_backups': {
+        const { directory = '.', pattern = '*.bak' } = args;
+        
+        // Find all backup files
+        const findCmd = `find ${directory} -name "${pattern}" -type f | head -100`;
+        const { stdout } = await execAsync(findCmd);
+        
+        if (!stdout.trim()) {
+          return {
+            content: [{
+              type: 'text',
+              text: `No backup files found matching pattern: ${pattern}`
+            }]
+          };
+        }
+        
+        const files = stdout.trim().split('\n');
+        
+        // Get file info for each backup
+        const backupInfo = [];
+        for (const backupFile of files) {
+          try {
+            const stats = await execAsync(`stat -f "%m %z" '${backupFile}' 2>/dev/null || stat -c "%Y %s" '${backupFile}'`);
+            const [mtime, size] = stats.stdout.trim().split(' ');
+            const date = new Date(parseInt(mtime) * 1000).toISOString().split('T')[0];
+            const sizeKB = Math.round(parseInt(size) / 1024);
+            
+            // Infer original file name
+            const originalFile = backupFile.replace(/\.(bak|backup|orig|~)$/, '');
+            backupInfo.push(`${backupFile} (${sizeKB}KB, ${date}) -> ${originalFile}`);
+          } catch {
+            backupInfo.push(backupFile);
+          }
+        }
+        
+        return {
+          content: [{
+            type: 'text',
+            text: `Found ${files.length} backup files:\n\n${backupInfo.join('\n')}\n\nTip: Use restore_backup to restore any of these files`
           }]
         };
       }
