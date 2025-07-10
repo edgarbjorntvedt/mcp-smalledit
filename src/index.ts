@@ -171,6 +171,58 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ['file', 'action']
         }
+      },
+      {
+        name: 'perl_edit',
+        description: 'Edit files using Perl one-liners (more powerful than sed, better cross-platform support)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            file: {
+              type: 'string',
+              description: 'File to edit'
+            },
+            script: {
+              type: 'string', 
+              description: 'Perl script (e.g., "s/old/new/g" or "$_ = uc" for uppercase)'
+            },
+            backup: {
+              type: 'boolean',
+              default: true,
+              description: 'Create backup file'
+            },
+            multiline: {
+              type: 'boolean',
+              default: false,
+              description: 'Enable multiline mode (-0777)'
+            }
+          },
+          required: ['file', 'script']
+        }
+      },
+      {
+        name: 'diff_preview', 
+        description: 'Preview what changes would be made by showing a diff',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            file: {
+              type: 'string',
+              description: 'File to preview changes for'
+            },
+            command: {
+              type: 'string',
+              description: 'Command that would make changes (e.g., "s/old/new/g")'
+            },
+            tool: {
+              type: 'string',
+              enum: ['sed', 'perl', 'awk'],
+              default: 'perl',
+              description: 'Which tool to use for the preview'
+            }
+          },
+          required: ['file', 'command']
+        }
       }
     ]
   };
@@ -190,17 +242,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           throw new Error(`File not found: ${file}`);
         }
         
-        // Build sed command
-        let sedCmd = 'sed';
-        if (!preview) {
-          sedCmd += backup ? ' -i.bak' : ' -i';
-        } else {
-          sedCmd += ' -n';
-        }
-        sedCmd += ` '${pattern}' '${file}'`;
-        
+        // Build sed command - use perl for better compatibility
+        let sedCmd;
         if (preview) {
-          sedCmd += ' | head -20'; // Show first 20 lines of preview
+          // For preview, create a temp copy and diff
+          const tempFile = `${file}.preview.tmp`;
+          await execAsync(`cp '${file}' '${tempFile}'`);
+          
+          // Apply change to temp file
+          sedCmd = `perl -i -pe '${pattern}' '${tempFile}' && diff -u '${file}' '${tempFile}' | head -50; rm -f '${tempFile}'`;
+        } else {
+          // Use perl for actual edits (more portable than sed)
+          const backupExt = backup ? '.bak' : '';
+          sedCmd = `perl -i${backupExt} -pe '${pattern}' '${file}'`;
         }
         
         const { stdout, stderr } = await execAsync(sedCmd);
@@ -242,7 +296,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         for (const file of fileList) {
           try {
-            const sedCmd = `sed ${backup ? '-i.bak' : '-i'} '${pattern}' '${file}'`;
+            const backupExt = backup ? '.bak' : '';
+            const sedCmd = `perl -i${backupExt} -pe '${pattern}' '${file}'`;
             await execAsync(sedCmd);
             results.push(`✓ ${file}`);
           } catch (error) {
@@ -347,6 +402,68 @@ ${content}' '${file}'`;
           content: [{
             type: 'text',
             text: `Successfully performed ${action} on line(s) ${range} in ${file}`
+          }]
+        };
+      }
+      
+      case 'perl_edit': {
+        const { file, script, backup = true, multiline = false } = args;
+        
+        if (!existsSync(file)) {
+          throw new Error(`File not found: ${file}`);
+        }
+        
+        const backupExt = backup ? '.bak' : '';
+        const multilineFlag = multiline ? '-0777 ' : '';
+        const perlCmd = `perl -i${backupExt} ${multilineFlag}-pe '${script}' '${file}'`;
+        
+        await execAsync(perlCmd);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: `Successfully edited ${file} using Perl${backup ? ' (backup created as .bak)' : ''}`
+          }]
+        };
+      }
+      
+      case 'diff_preview': {
+        const { file, command, tool = 'perl' } = args;
+        
+        if (!existsSync(file)) {
+          throw new Error(`File not found: ${file}`);
+        }
+        
+        // Create temp file
+        const tempFile = `${file}.preview.tmp`;
+        await execAsync(`cp '${file}' '${tempFile}'`);
+        
+        // Apply command to temp file
+        let editCmd;
+        switch (tool) {
+          case 'perl':
+            editCmd = `perl -i -pe '${command}' '${tempFile}'`;
+            break;
+          case 'sed':
+            editCmd = `sed -i.tmp '${command}' '${tempFile}' && rm -f '${tempFile}.tmp'`;
+            break;
+          case 'awk':
+            editCmd = `awk '${command}' '${tempFile}' > '${tempFile}.new' && mv '${tempFile}.new' '${tempFile}'`;
+            break;
+        }
+        
+        await execAsync(editCmd);
+        
+        // Generate diff
+        const { stdout } = await execAsync(`diff -u '${file}' '${tempFile}' || true`);
+        
+        // Cleanup
+        await execAsync(`rm -f '${tempFile}'`);
+        
+        return {
+          content: [{
+            type: 'text',
+            text: stdout ? `Preview of changes:\n${stdout}` : 'No changes would be made'
           }]
         };
       }
