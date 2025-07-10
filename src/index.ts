@@ -261,6 +261,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           }
         }
+      },
+      {
+        name: 'help',
+        description: 'Get detailed help and examples for smalledit tools',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            tool: {
+              type: 'string',
+              description: 'Tool name for help (e.g., "sed_edit", "perl_edit") or "all" for overview'
+            }
+          }
+        }
       }
     ]
   };
