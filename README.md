@@ -198,3 +198,16 @@ sed_multifile({
 ## License
 
 MIT
+-e 
+## Known Issues
+
+### Pattern Delimiters
+When using path replacements, use pipe  delimiter instead of forward slash  to avoid quoting issues:
+
+```javascript
+// ❌ Problematic with paths
+sed_edit({ pattern: "s/old/path/new/path/g" })
+
+// ✅ Works correctly
+sed_edit({ pattern: "s|old/path|new/path|g" })
+```
