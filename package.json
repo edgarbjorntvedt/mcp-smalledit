@@ -1,5 +1,5 @@
 {
-  "name": "@bard/mcp-smalledit",
+  "name": "mcp-smalledit",
   "version": "0.1.0",
   "description": "MCP server for small file edits using sed and other stream editors",
   "main": "dist/index.js",
