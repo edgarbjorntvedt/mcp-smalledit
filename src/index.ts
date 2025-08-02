@@ -17,6 +17,63 @@ import { promisify } from 'util';
 import { readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 
+
+type ToolArgsMap = {
+  'sed_edit': {
+  file: string | boolean;
+  pattern: string | boolean;
+  backup?: string | boolean;
+  preview?: string | boolean;
+  };
+  'sed_multifile': {
+  pattern: string | boolean;
+  filePattern: string | boolean;
+  directory?: string | boolean;
+  backup?: string | boolean;
+  };
+  'quick_replace': {
+  file: string | boolean;
+  find: string | boolean;
+  replace: string | boolean;
+  all?: string | boolean;
+  };
+  'line_edit': {
+  file: string | boolean;
+  lineNumber: string | boolean;
+  lineRange: string | boolean;
+  action: string | boolean;
+  content: string | boolean;
+  };
+  'awk_process': {
+  file: string | boolean;
+  script: string | boolean;
+  outputFile: string | boolean;
+  };
+  'diff_preview': {
+  file: string | boolean;
+  script: string | boolean;
+  backup?: string | boolean;
+  multiline?: string | boolean;
+  };
+  'perl_edit': {
+  file: string | boolean;
+  command: string | boolean;
+  tool?: string | boolean;
+  };
+  'restore_backup': {
+  file: string | boolean;
+  keepBackup?: string | boolean;
+  };
+  'list_backups': {
+  directory?: string | boolean;
+  pattern?: string | boolean;
+  };
+  'overview': {
+  tool?: string | boolean;
+  };
+};
+
+type ToolArg<T extends keyof ToolArgsMap> = ToolArgsMap[T];
 const execAsync = promisify(exec);
 
 // Initialize server
@@ -565,10 +622,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case 'sed_edit': {
-        const { file, pattern, backup = true, preview = false } = args;
+        const { file, pattern, backup = true, preview = false } = args as ToolArg<'sed_edit'>;
         
         // Check if file exists
-        if (!existsSync(file)) {
+        if (typeof file === 'string' && !existsSync(file)) {
           throw new Error(`File not found: ${file}`);
         }
         
@@ -606,11 +663,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'sed_multifile': {
-        const { pattern, filePattern, directory = '.', backup = true } = args;
+        const { pattern, filePattern, directory = '.', backup = true } = args as ToolArg<'sed_multifile'>;
         
         // Use find to get files matching pattern
         const findCmd = `find ${directory} -name "${filePattern}" -type f`;
-        const { stdout: files } = await execAsync(findCmd);
+        const { stdout: files } = await execAsync(typeof findCmd === 'string' ? findCmd : '');
         
         if (!files.trim()) {
           return {
@@ -628,10 +685,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           try {
             const backupExt = backup ? '.bak' : '';
             const sedCmd = `perl -i${backupExt} -pe '${pattern}' '${file}'`;
-            await execAsync(sedCmd);
+            await execAsync(typeof sedCmd === 'string' ? sedCmd : '');
             results.push(`✓ ${file}`);
           } catch (error) {
-            results.push(`✗ ${file}: ${error.message}`);
+            results.push(`✗ ${file}: ${(error as any).message}`);
           }
         }
         
@@ -644,9 +701,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'awk_process': {
-        const { file, script, outputFile } = args;
+        const { file, script, outputFile } = args as ToolArg<'awk_process'>;
         
-        if (!existsSync(file)) {
+        if (typeof file === 'string' && !existsSync(file)) {
           throw new Error(`File not found: ${file}`);
         }
         
@@ -655,7 +712,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           awkCmd += ` > '${outputFile}'`;
         }
         
-        const { stdout, stderr } = await execAsync(awkCmd);
+        const { stdout, stderr } = await execAsync(typeof awkCmd === 'string' ? awkCmd : '');
         
         if (stderr) {
           throw new Error(`AWK error: ${stderr}`);
@@ -672,22 +729,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'quick_replace': {
-        const { file, find, replace, all = true } = args;
+        const { file, find, replace, all = true } = args as ToolArg<'quick_replace'>;
         
-        if (!existsSync(file)) {
+        if (typeof file === 'string' && !existsSync(file)) {
           throw new Error(`File not found: ${file}`);
         }
         
         // Escape special characters for sed
-        const escapedFind = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const escapedReplace = replace.replace(/[&/\\]/g, '\\$&');
+        const escapedFind = (typeof find === 'string' ? find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'): '');
+        const escapedReplace = (typeof replace === 'string' ? replace.replace(/[&/\\]/g, '\\$&') : '');
         
         const pattern = all ? 
           `s/${escapedFind}/${escapedReplace}/g` :
           `s/${escapedFind}/${escapedReplace}/`;
         
         const sedCmd = `sed -i.bak '${pattern}' '${file}'`;
-        await execAsync(sedCmd);
+        await execAsync(typeof sedCmd === 'string' ? sedCmd : '');
         
         return {
           content: [{
@@ -698,9 +755,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'line_edit': {
-        const { file, lineNumber, lineRange, action, content } = args;
+        const { file, lineNumber, lineRange, action, content } = args as ToolArg<'line_edit'>;
         
-        if (!existsSync(file)) {
+        if (typeof file === 'string' && !existsSync(file)) {
           throw new Error(`File not found: ${file}`);
         }
         
@@ -726,7 +783,7 @@ ${content}' '${file}'`;
             throw new Error(`Unknown action: ${action}`);
         }
         
-        await execAsync(sedCmd);
+        await execAsync(typeof sedCmd === 'string' ? sedCmd : '');
         
         return {
           content: [{
@@ -737,9 +794,9 @@ ${content}' '${file}'`;
       }
       
       case 'perl_edit': {
-        const { file, script, backup = true, multiline = false } = args;
+        const { file, script, backup = true, multiline = false } = args as ToolArg<'diff_preview'>;
         
-        if (!existsSync(file)) {
+        if (typeof file === 'string' && !existsSync(file)) {
           throw new Error(`File not found: ${file}`);
         }
         
@@ -747,7 +804,7 @@ ${content}' '${file}'`;
         const multilineFlag = multiline ? '-0777 ' : '';
         const perlCmd = `perl -i${backupExt} ${multilineFlag}-pe '${script}' '${file}'`;
         
-        await execAsync(perlCmd);
+        await execAsync(typeof perlCmd === 'string' ? perlCmd : '');
         
         return {
           content: [{
@@ -758,9 +815,9 @@ ${content}' '${file}'`;
       }
       
       case 'diff_preview': {
-        const { file, command, tool = 'perl' } = args;
+        const { file, command, tool = 'perl' } = args as ToolArg<'perl_edit'>;
         
-        if (!existsSync(file)) {
+        if (typeof file === 'string' && !existsSync(file)) {
           throw new Error(`File not found: ${file}`);
         }
         
@@ -782,7 +839,7 @@ ${content}' '${file}'`;
             break;
         }
         
-        await execAsync(editCmd);
+        await execAsync(typeof editCmd === 'string' ? editCmd : '');
         
         // Generate diff
         const { stdout } = await execAsync(`diff -u '${file}' '${tempFile}' || true`);
@@ -799,11 +856,12 @@ ${content}' '${file}'`;
       }
       
       case 'help': {
-        const { tool = 'all' } = args;
+        const { tool = 'all' } = args as ToolArg<'perl_edit'>;
         
         const helpKey = tool === 'all' ? 'overview' : tool;
-        const content = helpContent[helpKey] || `No help available for tool: ${tool}\n\nAvailable tools: ${Object.keys(helpContent).join(', ')}`;
-        
+        const toolKey = String(helpKey) as keyof typeof helpContent;
+        const content = helpContent[toolKey] || `No help available for tool: ${tool}\n\nAvailable tools: ${Object.keys(helpContent).join(', ')}`;
+
         return {
           content: [{
             type: 'text',
@@ -813,12 +871,12 @@ ${content}' '${file}'`;
       }
       
       case 'restore_backup': {
-        const { file, keepBackup = true } = args;
+        const { file, keepBackup = true } = args as ToolArg<'restore_backup'>;
         
         const backupFile = `${file}.bak`;
         
         // Check if backup exists
-        if (!existsSync(backupFile)) {
+        if (typeof backupFile === 'string' && !existsSync(backupFile)) {
           // Look for other common backup patterns
           const alternatives = [
             `${file}~`,
@@ -833,15 +891,15 @@ ${content}' '${file}'`;
         }
         
         // Read backup content
-        const backupContent = await readFile(backupFile, 'utf-8');
+        const backupContent = await readFile(typeof backupFile === 'string' ? backupFile : '', 'utf-8');
         
         // Check if current file exists and create a safety backup
-        if (existsSync(file)) {
-          await writeFile(`${file}.before-restore`, await readFile(file, 'utf-8'));
+        if (typeof file === 'string' && existsSync(file)) {
+          await writeFile(`${file}.before-restore`, await readFile(typeof file === 'string' ? file : '', 'utf-8'));
         }
         
         // Restore the backup
-        await writeFile(file, backupContent);
+        await writeFile(typeof file === 'string' ? file : '', backupContent);
         
         // Remove backup if requested
         if (!keepBackup) {
@@ -857,11 +915,11 @@ ${content}' '${file}'`;
       }
       
       case 'list_backups': {
-        const { directory = '.', pattern = '*.bak' } = args;
+        const { directory = '.', pattern = '*.bak' } = args as ToolArg<'sed_multifile'>;
         
         // Find all backup files
         const findCmd = `find ${directory} -name "${pattern}" -type f | head -100`;
-        const { stdout } = await execAsync(findCmd);
+        const { stdout } = await execAsync(typeof findCmd === 'string' ? findCmd : '');
         
         if (!stdout.trim()) {
           return {
@@ -884,7 +942,7 @@ ${content}' '${file}'`;
             const sizeKB = Math.round(parseInt(size) / 1024);
             
             // Infer original file name
-            const originalFile = backupFile.replace(/\.(bak|backup|orig|~)$/, '');
+            const originalFile = (typeof backupFile === 'string' ? backupFile.replace(/\.(bak|backup|orig|~)$/, '') : '');
             backupInfo.push(`${backupFile} (${sizeKB}KB, ${date}) -> ${originalFile}`);
           } catch {
             backupInfo.push(backupFile);
