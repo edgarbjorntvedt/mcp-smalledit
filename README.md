@@ -10,6 +10,8 @@ When making minor changes to files (fixing typos, updating version numbers, chan
 - Reduce errors by not rewriting entire files
 - Enable bulk operations across multiple files
 - Provide preview capabilities before applying changes
+- Inspect files before and after edits for verification
+- Search and examine code context efficiently
 
 ## Installation
 
@@ -132,6 +134,82 @@ awk_process({
 })
 ```
 
+### 6. `read_file`
+Read and examine file contents with optional filtering.
+
+**Examples:**
+```javascript
+// Read entire file (first 100 lines)
+read_file({
+  file: "index.ts"
+})
+
+// Read specific line range
+read_file({
+  file: "config.json",
+  lines: "10-20"
+})
+
+// Read from line 50 to end
+read_file({
+  file: "large-file.txt",
+  lines: "50-$"
+})
+
+// Search for pattern with context
+read_file({
+  file: "src/app.ts",
+  search: "export",
+  context: 2
+})
+```
+
+### 7. `search_in_file`
+Search for patterns in files with context lines.
+
+**Examples:**
+```javascript
+// Basic pattern search
+search_in_file({
+  file: "index.ts",
+  pattern: "function"
+})
+
+// Case insensitive search with more context
+search_in_file({
+  file: "README.md",
+  pattern: "installation",
+  caseInsensitive: true,
+  context: 5
+})
+
+// Regex pattern search
+search_in_file({
+  file: "package.json",
+  pattern: "\"version\": \"[0-9.]+\"",
+  context: 2
+})
+```
+
+### 8. `show_around_line`
+Show context around a specific line number.
+
+**Examples:**
+```javascript
+// Show context around line 42
+show_around_line({
+  file: "index.ts",
+  lineNumber: 42
+})
+
+// Show more context (10 lines before/after)
+show_around_line({
+  file: "config.js",
+  lineNumber: 25,
+  context: 10
+})
+```
+
 ## Configuration
 
 Add to your MCP client config:
@@ -148,11 +226,25 @@ Add to your MCP client config:
 
 ## Common Use Cases
 
-### Version Bumping
+### Version Bumping Workflow
 ```javascript
+// 1. First, check current version
+read_file({
+  file: "package.json",
+  search: "version",
+  context: 1
+})
+
+// 2. Update the version
 sed_edit({
   file: "package.json",
   pattern: 's/"version": "[^"]*"/"version": "1.2.3"/g'
+})
+
+// 3. Verify the change
+show_around_line({
+  file: "package.json",
+  lineNumber: 3  // assuming version is around line 3
 })
 ```
 
@@ -161,6 +253,23 @@ sed_edit({
 sed_multifile({
   pattern: "s|'@old/package|'@new/package|g",
   filePattern: "*.ts"
+})
+```
+
+### Code Inspection Before Editing
+```javascript
+// Find all function definitions
+search_in_file({
+  file: "src/main.ts",
+  pattern: "function",
+  context: 2
+})
+
+// Check specific lines before editing
+show_around_line({
+  file: "src/main.ts",
+  lineNumber: 42,
+  context: 5
 })
 ```
 
