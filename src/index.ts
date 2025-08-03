@@ -924,10 +924,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         
         // Escape special characters for sed
-        const escapedFind = (typeof find === 'string' ? find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'): '');
-        const escapedReplace = (typeof replace === 'string' ? replace.replace(/[&/\\]/g, '\\$&') : '');
-        
-        const pattern = all ? 
+        const escapedFind = (typeof find === 'string' ? find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/'/g, "'\\''") : '');
+        const escapedReplace = (typeof replace === 'string' ? replace.replace(/[&/\\]/g, '\\$&').replace(/'/g, "'\\''") : '');
+
+        const pattern = all ?
           `s/${escapedFind}/${escapedReplace}/g` :
           `s/${escapedFind}/${escapedReplace}/`;
         
@@ -951,21 +951,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         let sedCmd = 'sed -i.bak ';
         const range = lineRange || `${lineNumber}`;
-        
+
+        // Escape single quotes in content for sed
+        const escapedContent = content ? String(content).replace(/'/g, "'\\''") : '';
+
         switch (action) {
           case 'replace':
-            sedCmd += `'${range}s/.*/${content}/' '${file}'`;
+            sedCmd += `'${range}s/.*/${escapedContent}/' '${file}'`;
             break;
           case 'delete':
             sedCmd += `'${range}d' '${file}'`;
             break;
           case 'insert_after':
             sedCmd += `'${range}a\\
-${content}' '${file}'`;
+${escapedContent}' '${file}'`;
             break;
           case 'insert_before':
             sedCmd += `'${range}i\\
-${content}' '${file}'`;
+${escapedContent}' '${file}'`;
             break;
           default:
             throw new Error(`Unknown action: ${action}`);
