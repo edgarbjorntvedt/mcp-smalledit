@@ -68,6 +68,23 @@ type ToolArgsMap = {
   directory?: string | boolean;
   pattern?: string | boolean;
   };
+  'read_file': {
+  file: string | boolean;
+  lines?: string | boolean;
+  search?: string | boolean;
+  context?: string | boolean;
+  };
+  'search_in_file': {
+  file: string | boolean;
+  pattern: string | boolean;
+  context?: string | boolean;
+  caseInsensitive?: string | boolean;
+  };
+  'show_around_line': {
+  file: string | boolean;
+  lineNumber: string | boolean;
+  context?: string | boolean;
+  };
   'overview': {
   tool?: string | boolean;
   };
@@ -320,6 +337,84 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
+        name: 'read_file',
+        description: 'Read and examine file contents with options for line ranges, search patterns, or full file viewing',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            file: {
+              type: 'string',
+              description: 'Path to the file to read'
+            },
+            lines: {
+              type: 'string',
+              description: 'Line range (e.g., "10-20", "1-5", "20-$")'
+            },
+            search: {
+              type: 'string',
+              description: 'Search pattern with context'
+            },
+            context: {
+              type: 'number',
+              default: 3,
+              description: 'Lines of context around search matches'
+            }
+          },
+          required: ['file']
+        }
+      },
+      {
+        name: 'search_in_file',
+        description: 'Search for patterns in a file and show results with context',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            file: {
+              type: 'string',
+              description: 'Path to the file to search'
+            },
+            pattern: {
+              type: 'string',
+              description: 'Pattern to search for (can be regex)'
+            },
+            context: {
+              type: 'number',
+              default: 3,
+              description: 'Lines of context around matches'
+            },
+            caseInsensitive: {
+              type: 'boolean',
+              default: false,
+              description: 'Case insensitive search'
+            }
+          },
+          required: ['file', 'pattern']
+        }
+      },
+      {
+        name: 'show_around_line',
+        description: 'Show content around a specific line number for context verification',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            file: {
+              type: 'string',
+              description: 'Path to the file'
+            },
+            lineNumber: {
+              type: 'number',
+              description: 'Line number to center on'
+            },
+            context: {
+              type: 'number',
+              default: 5,
+              description: 'Lines before and after to show'
+            }
+          },
+          required: ['file', 'lineNumber']
+        }
+      },
+      {
         name: 'help',
         description: 'Get detailed help and examples for smalledit tools',
         inputSchema: {
@@ -352,6 +447,9 @@ Available tools:
 - diff_preview: Preview changes before applying
 - restore_backup: Restore files from .bak backups
 - list_backups: Find all backup files
+- read_file: Read and examine file contents with ranges/search
+- search_in_file: Search for patterns in files with context
+- show_around_line: Show content around specific line numbers
 - help: This help system
 
 🎯 WHEN TO USE SMALLEDIT vs FILESYSTEM TOOLS:
@@ -612,6 +710,96 @@ Output shows:
 - Original file name (inferred)
 
 Useful for cleanup or finding old versions.
+`,
+  read_file: `read_file - Read and examine file contents
+===========================================
+Read files with line ranges, search patterns, or full content viewing.
+
+Examples:
+  // Read entire file (limited to 100 lines)
+  read_file({ file: "config.json" })
+  
+  // Read specific line range
+  read_file({ file: "app.js", lines: "10-20" })
+  read_file({ file: "data.txt", lines: "50-$" }) // Line 50 to end
+  
+  // Search with context
+  read_file({ file: "server.js", search: "function.*start", context: 5 })
+  
+  // Quick verification after edit
+  sed_edit({ file: "config.js", pattern: "s/8080/3000/g" })
+  read_file({ file: "config.js", search: "3000", context: 2 })
+
+Modes:
+- Full file: Shows first 100 lines with line numbers
+- Line range: Shows specific lines ("start-end" format)
+- Search: Shows matches with surrounding context
+
+Perfect for:
+- Verifying edits without using brain
+- Understanding file structure
+- Finding content before making changes
+`,
+  search_in_file: `search_in_file - Advanced file searching
+=======================================
+Search for patterns with context and case options.
+
+Examples:
+  // Basic search
+  search_in_file({ file: "app.js", pattern: "console\\.log" })
+  
+  // Case insensitive with more context
+  search_in_file({ 
+    file: "README.md", 
+    pattern: "installation", 
+    caseInsensitive: true,
+    context: 5 
+  })
+  
+  // Find function definitions
+  search_in_file({ file: "utils.js", pattern: "^function\\s+\\w+" })
+  
+  // Search for TODO comments
+  search_in_file({ file: "src/main.ts", pattern: "TODO|FIXME|XXX" })
+
+Features:
+- Regex pattern support
+- Case sensitive/insensitive options
+- Configurable context lines
+- Multiple matches per file
+- Line numbers for easy navigation
+
+Great for:
+- Finding where to make edits
+- Code review and debugging
+- Locating specific patterns
+`,
+  show_around_line: `show_around_line - Show context around specific lines
+===================================================
+Display content around a specific line number.
+
+Examples:
+  // Show context around line 42
+  show_around_line({ file: "server.js", lineNumber: 42 })
+  
+  // More context (10 lines before/after)
+  show_around_line({ file: "config.json", lineNumber: 15, context: 10 })
+  
+  // Verify edit results
+  line_edit({ file: "app.js", lineNumber: 25, action: "replace", content: "const port = 3000;" })
+  show_around_line({ file: "app.js", lineNumber: 25, context: 3 })
+
+Output:
+- Shows line numbers
+- Centers on target line
+- Configurable context (default: 5 lines)
+- Marked target line with >
+
+Perfect for:
+- Verifying line-based edits
+- Understanding code context
+- Quick inspection after changes
+- Debugging specific line issues
 `
 };
 
@@ -956,7 +1144,160 @@ ${content}' '${file}'`;
           }]
         };
       }
-      
+
+      case 'read_file': {
+        const { file, lines, search, context = 3 } = args as ToolArg<'read_file'>;
+
+        if (typeof file === 'string' && !existsSync(file)) {
+          throw new Error(`File not found: ${file}`);
+        }
+
+        const content = await readFile(typeof file === 'string' ? file : '', 'utf-8');
+        const fileLines = content.split('\n');
+
+        if (search) {
+          // Search mode - find pattern and show with context
+          const results: string[] = [];
+          const regex = new RegExp(String(search), 'gi');
+
+          fileLines.forEach((line, index) => {
+            if (regex.test(line)) {
+              const startLine = Math.max(0, index - Number(context));
+              const endLine = Math.min(fileLines.length - 1, index + Number(context));
+
+              results.push(`\n--- Match at line ${index + 1} ---`);
+              for (let i = startLine; i <= endLine; i++) {
+                const marker = i === index ? '>' : ' ';
+                results.push(`${marker} ${(i + 1).toString().padStart(4)}: ${fileLines[i]}`);
+              }
+            }
+          });
+
+          return {
+            content: [{
+              type: 'text',
+              text: results.length > 0 ?
+                  `Search results for "${search}" in ${file}:\n${results.join('\n')}` :
+                  `No matches found for "${search}" in ${file}`
+            }]
+          };
+        }
+
+        if (lines) {
+          // Support both string and array for lines
+          let startStr: string, endStr: string;
+          if (Array.isArray(lines)) {
+            [startStr, endStr] = lines;
+          } else if (typeof lines === 'string') {
+            [startStr, endStr] = lines.includes('-') ? lines.split('-') : [lines, lines];
+          } else {
+            startStr = endStr = String(lines);
+          }
+          const start = parseInt(startStr);
+          const end = endStr === '$' ? fileLines.length : parseInt(endStr);
+
+          const selectedLines = fileLines.slice(start - 1, end);
+          const numberedLines = selectedLines.map((line, index) =>
+              `${(start + index).toString().padStart(4)}: ${line}`
+          );
+
+          return {
+            content: [{
+              type: 'text',
+              text: `Lines ${start}-${end === fileLines.length ? '$' : end} of ${file}:\n${numberedLines.join('\n')}`
+            }]
+          };
+        }
+
+        // Full file mode (limit for performance)
+        const maxLines = 100;
+        const displayLines = fileLines.length > maxLines ?
+            fileLines.slice(0, maxLines) : fileLines;
+
+        const numberedLines = displayLines.map((line, index) =>
+            `${(index + 1).toString().padStart(4)}: ${line}`
+        );
+
+        const truncated = fileLines.length > maxLines ?
+            `\n... (showing first ${maxLines} of ${fileLines.length} lines)` : '';
+
+        return {
+          content: [{
+            type: 'text',
+            text: `Contents of ${file}:\n${numberedLines.join('\n')}${truncated}`
+          }]
+        };
+      }
+
+      case 'search_in_file': {
+        const { file, pattern, context = 3, caseInsensitive = false } = args as ToolArg<'search_in_file'>;
+
+        if (typeof file === 'string' && !existsSync(file)) {
+          throw new Error(`File not found: ${file}`);
+        }
+
+        const content = await readFile(typeof file === 'string' ? file : '', 'utf-8');
+        const fileLines = content.split('\n');
+        const flags = caseInsensitive ? 'gi' : 'g';
+        const regex = new RegExp(String(pattern), flags);
+
+        const results: string[] = [];
+        let matchCount = 0;
+
+        fileLines.forEach((line, index) => {
+          if (regex.test(line)) {
+            matchCount++;
+            const startLine = Math.max(0, index - Number(context));
+            const endLine = Math.min(fileLines.length - 1, index + Number(context));
+
+            results.push(`\n--- Match ${matchCount} at line ${index + 1} ---`);
+            for (let i = startLine; i <= endLine; i++) {
+              const marker = i === index ? '>' : ' ';
+              results.push(`${marker} ${(i + 1).toString().padStart(4)}: ${fileLines[i]}`);
+            }
+          }
+        });
+
+        return {
+          content: [{
+            type: 'text',
+            text: results.length > 0 ?
+                `Found ${matchCount} matches for "${pattern}" in ${file}:\n${results.join('\n')}` :
+                `No matches found for "${pattern}" in ${file}`
+          }]
+        };
+      }
+      case 'show_around_line': {
+        const { file, lineNumber, context = 5 } = args as ToolArg<'show_around_line'>;
+
+        if (typeof file === 'string' && !existsSync(file)) {
+          throw new Error(`File not found: ${file}`);
+        }
+
+        const content = await readFile(typeof file === 'string' ? file : '', 'utf-8');
+        const fileLines = content.split('\n');
+        const targetLine = typeof lineNumber === 'number' ? lineNumber : parseInt(String(lineNumber));
+
+        if (targetLine < 1 || targetLine > fileLines.length) {
+          throw new Error(`Line number ${targetLine} is out of range (file has ${fileLines.length} lines)`);
+        }
+
+        const startLine = Math.max(1, targetLine - Number(context));
+        const endLine = Math.min(fileLines.length, targetLine + Number(context));
+
+        const results: string[] = [];
+        for (let i = startLine; i <= endLine; i++) {
+          const marker = i === targetLine ? '>' : ' ';
+          results.push(`${marker} ${i.toString().padStart(4)}: ${fileLines[i - 1]}`);
+        }
+
+        return {
+          content: [{
+            type: 'text',
+            text: `Context around line ${targetLine} in ${file}:\n${results.join('\n')}`
+          }]
+        };
+      }
       default:
         throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     }
